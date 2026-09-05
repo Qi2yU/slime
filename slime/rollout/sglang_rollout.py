@@ -23,8 +23,9 @@ from slime.utils.eval_config import EvalDatasetConfig
 from slime.utils.http_utils import get, get_rollout_num_engines, post
 from slime.utils.misc import SingletonMeta, load_function
 from slime.utils.processing_utils import (
+    _MULTIMODAL_EXECUTOR,
+    async_encode_image_for_rollout_engine,
     build_processor_kwargs,
-    encode_image_for_rollout_engine,
     load_processor,
     load_tokenizer,
 )
@@ -53,6 +54,41 @@ def _prepare_prompt_ids(sample: Sample, tokenizer, processor: Any) -> list[int]:
             sample.multimodal_train_inputs = {
                 k: v for k, v in processor_output.items() if k not in _PROCESSOR_PROMPT_KEYS
             } or None
+        return prompt_ids
+
+    if reuse_existing_input_ids:
+        return sample.tokens
+
+    return tokenizer.encode(sample.prompt, add_special_tokens=False)
+
+
+def _run_multimodal_processor(processor, prompt: str, raw_multimodal_inputs: dict):
+    processor_output = processor(text=prompt, **build_processor_kwargs(raw_multimodal_inputs))
+    prompt_ids = processor_output["input_ids"][0]
+    multimodal_train_inputs = {
+        k: v for k, v in processor_output.items() if k not in _PROCESSOR_PROMPT_KEYS
+    } or None
+    return prompt_ids, multimodal_train_inputs
+
+
+async def _prepare_prompt_ids_async(sample: Sample, tokenizer, processor: Any) -> list[int]:
+    raw_multimodal_inputs = sample.multimodal_inputs or {}
+    has_multimodal_inputs = any(value is not None for value in raw_multimodal_inputs.values())
+    reuse_existing_input_ids = bool(sample.tokens) and (
+        sample.multimodal_train_inputs is not None or not has_multimodal_inputs
+    )
+
+    if processor and has_multimodal_inputs and not reuse_existing_input_ids:
+        loop = asyncio.get_running_loop()
+        prompt_ids, multimodal_train_inputs = await loop.run_in_executor(
+            _MULTIMODAL_EXECUTOR,
+            _run_multimodal_processor,
+            processor,
+            sample.prompt,
+            raw_multimodal_inputs,
+        )
+        if sample.multimodal_train_inputs is None:
+            sample.multimodal_train_inputs = multimodal_train_inputs
         return prompt_ids
 
     if reuse_existing_input_ids:
@@ -163,7 +199,7 @@ async def generate(args: Namespace, sample: Sample, sampling_params: dict[str, A
         sample.status == Sample.Status.PENDING or sample.status == Sample.Status.ABORTED
     ), f"Sample status is {sample.status}"
 
-    prompt_ids = _prepare_prompt_ids(sample, state.tokenizer, state.processor)
+    prompt_ids = await _prepare_prompt_ids_async(sample, state.tokenizer, state.processor)
 
     sampling_params["max_new_tokens"] -= sample.response_length
 
@@ -185,7 +221,9 @@ async def generate(args: Namespace, sample: Sample, sampling_params: dict[str, A
 
     images = sample.multimodal_inputs.get("images") if sample.multimodal_inputs else None
     if images:
-        payload["image_data"] = [encode_image_for_rollout_engine(image) for image in images]
+        payload["image_data"] = await asyncio.gather(
+            *(async_encode_image_for_rollout_engine(image) for image in images)
+        )
         # For single-turn multimodal requests, send text so SGLang expands the
         # image placeholders with its own processor rules.
         payload["text"] = sample.prompt
