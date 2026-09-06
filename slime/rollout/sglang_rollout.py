@@ -65,9 +65,7 @@ def _prepare_prompt_ids(sample: Sample, tokenizer, processor: Any) -> list[int]:
 def _run_multimodal_processor(processor, prompt: str, raw_multimodal_inputs: dict):
     processor_output = processor(text=prompt, **build_processor_kwargs(raw_multimodal_inputs))
     prompt_ids = processor_output["input_ids"][0]
-    multimodal_train_inputs = {
-        k: v for k, v in processor_output.items() if k not in _PROCESSOR_PROMPT_KEYS
-    } or None
+    multimodal_train_inputs = {k: v for k, v in processor_output.items() if k not in _PROCESSOR_PROMPT_KEYS} or None
     return prompt_ids, multimodal_train_inputs
 
 
