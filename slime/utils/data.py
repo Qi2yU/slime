@@ -114,7 +114,11 @@ def filter_long_prompt(origin_samples: list[Sample], tokenizer, processor, max_l
             for position, sample in multimodal:
                 # sample.prompt is already a chat-template string; reuse the
                 # multimodal_inputs computed in Dataset.__init__ instead of re-parsing it.
-                multimodal_inputs = {key: value for key, value in (sample.multimodal_inputs or {}).items() if value is not None}
+                multimodal_inputs = {
+                    key: value
+                    for key, value in (sample.multimodal_inputs or {}).items()
+                    if value is not None
+                }
                 processor_output = processor(text=sample.prompt, **multimodal_inputs)
                 input_ids = processor_output["input_ids"][0]
                 if len(input_ids) <= max_length:
