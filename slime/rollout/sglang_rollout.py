@@ -95,6 +95,13 @@ async def _prepare_prompt_ids_async(sample: Sample, tokenizer, processor: Any) -
     return tokenizer.encode(sample.prompt, add_special_tokens=False)
 
 
+def _load_images(images) -> None:
+    # PIL lazily decodes files. Finish decoding before processor and encoder
+    # threads read the same image; repeated load() calls reuse loaded pixels.
+    for image in images:
+        image.load()
+
+
 def get_model_url(args: Namespace, model_name: str, endpoint: str = "/generate") -> str:
     """Return the router URL for a named model.
 
@@ -197,14 +204,14 @@ async def generate(args: Namespace, sample: Sample, sampling_params: dict[str, A
         sample.status == Sample.Status.PENDING or sample.status == Sample.Status.ABORTED
     ), f"Sample status is {sample.status}"
 
-    prompt_ids = await _prepare_prompt_ids_async(sample, state.tokenizer, state.processor)
-
     sampling_params["max_new_tokens"] -= sample.response_length
 
     assert (
         sampling_params["max_new_tokens"] >= 0
     ), f"max_new_tokens: {sampling_params['max_new_tokens']} should not be less than 0"
     if sampling_params["max_new_tokens"] == 0:
+        # Preserve the training inputs prepared before this early return.
+        await _prepare_prompt_ids_async(sample, state.tokenizer, state.processor)
         sample.status = Sample.Status.TRUNCATED
         return sample
 
@@ -219,13 +226,26 @@ async def generate(args: Namespace, sample: Sample, sampling_params: dict[str, A
 
     images = sample.multimodal_inputs.get("images") if sample.multimodal_inputs else None
     if images:
-        payload["image_data"] = await asyncio.gather(
-            *(async_encode_image_for_rollout_engine(image) for image in images)
-        )
+        await asyncio.get_running_loop().run_in_executor(_MULTIMODAL_EXECUTOR, _load_images, images)
+        # Image encoding does not depend on the processor output.
+        preparation_tasks = [
+            asyncio.create_task(_prepare_prompt_ids_async(sample, state.tokenizer, state.processor)),
+            *(asyncio.create_task(async_encode_image_for_rollout_engine(image)) for image in images),
+        ]
+        try:
+            prompt_ids, *image_data = await asyncio.gather(*preparation_tasks)
+        except BaseException:
+            # Stop pending preparation before the sample can be retried or reused.
+            for task in preparation_tasks:
+                task.cancel()
+            await asyncio.gather(*preparation_tasks, return_exceptions=True)
+            raise
+        payload["image_data"] = image_data
         # For single-turn multimodal requests, send text so SGLang expands the
         # image placeholders with its own processor rules.
         payload["text"] = sample.prompt
     else:
+        prompt_ids = await _prepare_prompt_ids_async(sample, state.tokenizer, state.processor)
         payload["input_ids"] = prompt_ids
 
     if not sample.tokens:
