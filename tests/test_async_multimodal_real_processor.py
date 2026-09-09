@@ -62,7 +62,7 @@ def _assert_deep_equal(a, b, path="root"):
             _assert_deep_equal(a[k], b[k], f"{path}.{k}")
     elif isinstance(a, (list, tuple)):
         assert len(a) == len(b), f"{path}: len {len(a)} != {len(b)}"
-        for i, (x, y) in enumerate(zip(a, b)):
+        for i, (x, y) in enumerate(zip(a, b, strict=True)):
             _assert_deep_equal(x, y, f"{path}[{i}]")
     else:
         try:
@@ -174,7 +174,7 @@ def test_real_processor_is_consistent_under_concurrency(loaded):
 
     async_ids = asyncio.run(run_all())
 
-    for i, (sample, ids) in enumerate(zip(async_samples, async_ids)):
+    for i, (sample, ids) in enumerate(zip(async_samples, async_ids, strict=True)):
         ref_ids, ref_mm = references[i]
         assert ids == ref_ids, f"sample {i}: prompt_ids mismatch under concurrency"
         _assert_deep_equal(ref_mm, sample.multimodal_train_inputs, f"sample[{i}].multimodal_train_inputs")

@@ -126,7 +126,10 @@ def test_async_prompt_preparation_preserves_text_only_fast_path():
     tokenizer = SimpleNamespace(
         encode=lambda text, add_special_tokens: encode_calls.append((text, add_special_tokens)) or [4, 5]
     )
-    processor = lambda **_kwargs: pytest.fail("processor should not be called")
+
+    def processor(**_kwargs):
+        pytest.fail("processor should not be called")
+
     sample = Sample(prompt="text only")
 
     prompt_ids = asyncio.run(sglang_rollout._prepare_prompt_ids_async(sample, tokenizer, processor))
@@ -253,7 +256,7 @@ def test_concurrent_prompt_preparation_has_no_cross_contamination():
 
     results = asyncio.run(run_all())
 
-    for i, (sample, prompt_ids) in enumerate(zip(samples, results)):
+    for i, (sample, prompt_ids) in enumerate(zip(samples, results, strict=True)):
         expected_text = f"prompt-{i:03d}"
         assert prompt_ids == [ord(c) for c in expected_text]
         assert sample.multimodal_train_inputs == {
