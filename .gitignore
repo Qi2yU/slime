@@ -194,3 +194,6 @@ glm/
 _examples_synced/
 .env
 .DS_Store
+
+tools/PR_DESCRIPTION_async_multimodal.md
+tools/async_multimodal_speedup_shenhe.md
