@@ -227,9 +227,7 @@ def test_gather_preserves_image_order_under_reversed_completion(monkeypatch):
     monkeypatch.setattr(processing_utils, "encode_image_for_rollout_engine", slow_encode)
 
     async def gather_encode():
-        return await asyncio.gather(
-            *(processing_utils.async_encode_image_for_rollout_engine(im) for im in images)
-        )
+        return await asyncio.gather(*(processing_utils.async_encode_image_for_rollout_engine(im) for im in images))
 
     result = asyncio.run(gather_encode())
 
@@ -246,10 +244,7 @@ def test_gather_preserves_image_order_under_reversed_completion(monkeypatch):
 def test_concurrent_prompt_preparation_has_no_cross_contamination():
     proc = _FakeProcessor(work_seconds=0.005)
     num_samples = 16
-    samples = [
-        Sample(prompt=f"prompt-{i:03d}", multimodal_inputs={"images": [f"im{i}"]})
-        for i in range(num_samples)
-    ]
+    samples = [Sample(prompt=f"prompt-{i:03d}", multimodal_inputs={"images": [f"im{i}"]}) for i in range(num_samples)]
 
     async def run_all():
         return await asyncio.gather(

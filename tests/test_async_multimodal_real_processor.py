@@ -96,9 +96,7 @@ def _make_sample(tokenizer, processor, *, color, size=(64, 64), text="Describe t
             ],
         }
     ]
-    prompt_str = tokenizer.apply_chat_template(
-        messages, tokenize=False, add_generation_prompt=True
-    )
+    prompt_str = tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
     multimodal_inputs = process_vision_info(messages, processor)
     return Sample(prompt=prompt_str, multimodal_inputs=multimodal_inputs)
 
@@ -171,10 +169,7 @@ def test_real_processor_is_consistent_under_concurrency(loaded):
 
     async def run_all():
         return await asyncio.gather(
-            *(
-                sglang_rollout._prepare_prompt_ids_async(s, tokenizer, processor)
-                for s in async_samples
-            )
+            *(sglang_rollout._prepare_prompt_ids_async(s, tokenizer, processor) for s in async_samples)
         )
 
     async_ids = asyncio.run(run_all())

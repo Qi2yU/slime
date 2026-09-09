@@ -120,9 +120,7 @@ def test_text_only_payload_matches_sync_reference(captured_generate):
     sampling_params = {"max_new_tokens": 128, "temperature": 0.0}
 
     captured, tokenizer, processor = captured_generate(sample, sampling_params)
-    reference = _build_reference_payload(
-        Sample(prompt="what is 2 + 2?"), tokenizer, processor, sampling_params
-    )
+    reference = _build_reference_payload(Sample(prompt="what is 2 + 2?"), tokenizer, processor, sampling_params)
 
     assert captured["payload"] == reference
     assert "image_data" not in captured["payload"]
